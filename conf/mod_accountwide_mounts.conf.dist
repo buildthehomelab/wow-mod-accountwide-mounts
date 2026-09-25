@@ -1,0 +1,27 @@
+[worldserver]
+
+########################################
+# mod-accountwide-mounts
+#
+# A mount learned by one character is taught to every other character on the same account the
+# next time they log in. Class mounts (paladin, warlock, death knight) are never shared.
+# Bots are ignored.
+########################################
+
+#
+#    AccountWideMounts.Enable
+#        Description: Master switch.
+#        Default:     1
+#
+
+AccountWideMounts.Enable = 1
+
+#
+#    AccountWideMounts.RespectItemRestrictions
+#        Description: Only teach a mount to characters that could use the item it comes from.
+#                     Keeps Alliance mounts off Horde characters and the other way round.
+#                     0 shares every mount with every character.
+#        Default:     1
+#
+
+AccountWideMounts.RespectItemRestrictions = 1
