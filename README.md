@@ -27,6 +27,16 @@ settings say.
 Bots from mod-playerbots are skipped both ways: they don't add mounts to their account and don't
 get taught any.
 
+## Requirements
+
+- AzerothCore wotlk (master) with the WotLK 3.3.5a (12340) client.
+- No client patch or addon. The table is created in the characters database automatically.
+- Works with [mod-individual-progression](https://github.com/ZhengPeiRu21/mod-individual-progression),
+  which is the reason this is split out of mod-accountwide.
+- Optional: [mod-playerbots](https://github.com/mod-playerbots/mod-playerbots). Bots are skipped
+  whether or not it is installed; the module detects them with `WorldSession::IsHeadless()` when
+  the core has it.
+
 ## Install
 
 Clone it into your AzerothCore `modules` folder **as `mod-accountwide-mounts`**, without the
@@ -64,6 +74,24 @@ is kept. Either remove mod-accountwide, or keep it for the other features and se
 - **Logout:** saves once more.
 - **Deleting the account's last character:** the account's mount list is cleared.
 
+## Troubleshooting
+
+- **The table was not created.** It is added by an update file in the characters database, which
+  only runs while `Updates.EnableDatabases` includes the characters database (it does by default).
+- **An alt did not get a mount.** Class mounts stay with their class, and mounts for the other
+  faction are skipped while the restriction setting is on. Each character adds its own mounts to the
+  account when it logs in, so log in on the character that has them first, then on your alts.
+- **Two modules are doing the same job.** If mod-accountwide is still installed, remove it or set
+  `AccountWide.Mounts = 0` in its config.
+- **To share everything regardless of faction or class.** Set `AccountWideMounts.RespectItemRestrictions = 0`.
+
+## Credits
+
+Based on [warblups/mod-accountwide](https://github.com/warblups/mod-accountwide) by warblups, which
+this is split out of.
+
+Author: [buildthehomelab](https://github.com/buildthehomelab)
+
 ## License
 
-GNU AGPL v3, the same as mod-accountwide, which this is based on. See `LICENSE`.
+GNU AGPL v3, the same as mod-accountwide, which this is based on. See [LICENSE](LICENSE).
