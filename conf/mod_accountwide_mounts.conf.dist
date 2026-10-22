@@ -20,7 +20,7 @@ AccountWideMounts.Enable = 1
 #    AccountWideMounts.RespectItemRestrictions
 #        Description: Only teach a mount to characters that could use the item it comes from.
 #                     Keeps Alliance mounts off Horde characters and the other way round.
-#                     0 shares every mount with every character.
+#                     0 turns the race and class check off.
 #        Default:     1
 #
 
@@ -28,8 +28,8 @@ AccountWideMounts.RespectItemRestrictions = 1
 
 #
 #    AccountWideMounts.RespectItemRequirements
-#        Description: Only teach a mount to characters that meet the level and skill (riding)
-#                     the item it comes from asks for. A held-back mount is taught on level-up or
+#        Description: Only teach a mount to characters that meet the level and skill (riding,
+#                     or a profession) the item it comes from asks for. A held-back mount is taught on level-up or
 #                     when the character learns riding. 0 ignores them.
 #        Default:     1
 #
