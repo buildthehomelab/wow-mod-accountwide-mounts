@@ -20,6 +20,15 @@ in a separate module, [mod-accountwide-pets](https://github.com/buildthehomelab/
 - Not the other faction's mounts, as long as `AccountWideMounts.RespectItemRestrictions` is on
   (the default). A mount only goes to characters that could use the item it's learned from, so
   your Horde characters don't get the Alliance rams.
+- Not before a character can use it. With `AccountWideMounts.RespectItemRequirements` on (the
+  default), a mount waits until the character has the level and skill its item asks for (riding,
+  or Engineering and Tailoring for the flying machines and carpets), and is taught on the
+  level-up or when it learns riding. When several items teach the same mount, meeting any one
+  of them is enough. Mounts no item teaches (quest and achievement rewards) aren't held back.
+- With mod-individual-progression and `AccountWideMounts.IndividualProgression.Enable = 1`, not
+  before the character reaches the progression state from which a vendor sells the mount's item
+  (a vendor condition on IP's quest 66000 + state). Mounts from drops and quests aren't gated,
+  and neither are vendors IP holds back some other way (by zone or phase) or holiday vendors.
 
 Mounts are never taken away. A character that already knows a mount keeps it whatever the
 settings say.
@@ -63,7 +72,11 @@ is kept. Either remove mod-accountwide, or keep it for the other features and se
 | Setting | Default | What it does |
 |---------|---------|--------------|
 | `AccountWideMounts.Enable` | `1` | Master switch. |
-| `AccountWideMounts.RespectItemRestrictions` | `1` | Only teach a mount to characters that could use the item it's learned from. `0` shares every mount with every character. |
+| `AccountWideMounts.RespectItemRestrictions` | `1` | Only teach a mount to characters that could use the item it's learned from. `0` turns off the race and class check. |
+| `AccountWideMounts.RespectItemRequirements` | `1` | Only teach a mount once the character has the level and skill (riding or profession) its item asks for. |
+| `AccountWideMounts.IndividualProgression.Enable` | `0` | Hold back vendor mounts until the character reaches the progression state the vendor sells them from. |
+| `AccountWideMounts.IndividualProgression.QuestBase` | `66000` | IP's state quests are QuestBase + state. |
+| `AccountWideMounts.IndividualProgression.MaxState` | `18` | The highest IP state. |
 
 ## How it works
 
@@ -71,6 +84,8 @@ is kept. Either remove mod-accountwide, or keep it for the other features and se
   account mount it doesn't know yet and is allowed to have.
 - **Learning a mount:** it's added to the account right away, so a character that logs in
   meanwhile gets it too.
+- **Level-up, learning riding, a new progression state:** the character is taught the account
+  mounts it couldn't have before.
 - **Logout:** saves once more.
 - **Deleting the account's last character:** the account's mount list is cleared.
 
@@ -79,11 +94,15 @@ is kept. Either remove mod-accountwide, or keep it for the other features and se
 - **The table was not created.** It is added by an update file in the characters database, which
   only runs while `Updates.EnableDatabases` includes the characters database (it does by default).
 - **An alt did not get a mount.** Class mounts stay with their class, and mounts for the other
-  faction are skipped while the restriction setting is on. Each character adds its own mounts to the
+  faction are skipped while the restriction setting is on. A mount also waits for the level and
+  riding (or profession) skill its item needs, and, with the progression option on, for the
+  progression state its vendor sells it from. Each character adds its own mounts to the
   account when it logs in, so log in on the character that has them first, then on your alts.
 - **Two modules are doing the same job.** If mod-accountwide is still installed, remove it or set
   `AccountWide.Mounts = 0` in its config.
 - **To share everything regardless of faction or class.** Set `AccountWideMounts.RespectItemRestrictions = 0`.
+- **Changed the vendor conditions.** `.reload config` rebuilds the mount table; `.reload conditions`
+  or `.reload npc_vendor` alone don't.
 
 ## Credits
 
