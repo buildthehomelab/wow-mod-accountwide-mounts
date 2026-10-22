@@ -25,3 +25,34 @@ AccountWideMounts.Enable = 1
 #
 
 AccountWideMounts.RespectItemRestrictions = 1
+
+#
+#    AccountWideMounts.RespectItemRequirements
+#        Description: Only teach a mount to characters that meet the level and skill (riding)
+#                     the item it comes from asks for. A held-back mount is taught on level-up or
+#                     when the character learns riding. 0 ignores them.
+#        Default:     1
+#
+
+AccountWideMounts.RespectItemRequirements = 1
+
+#
+#    AccountWideMounts.IndividualProgression.Enable
+#        Description: With mod-individual-progression: a mount whose item vendors only sell from
+#                     a progression state on (a vendor condition on the state's quest) waits until
+#                     the character reaches that state. Mounts from drops and quests aren't gated.
+#        Default:     0
+#
+#    AccountWideMounts.IndividualProgression.QuestBase
+#        Description: The quest id of state 0; IP rewards QuestBase + n when a character reaches
+#                     state n.
+#        Default:     66000
+#
+#    AccountWideMounts.IndividualProgression.MaxState
+#        Description: The highest state.
+#        Default:     18
+#
+
+AccountWideMounts.IndividualProgression.Enable = 0
+AccountWideMounts.IndividualProgression.QuestBase = 66000
+AccountWideMounts.IndividualProgression.MaxState = 18

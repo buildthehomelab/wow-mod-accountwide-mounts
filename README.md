@@ -20,6 +20,12 @@ in a separate module, [mod-accountwide-pets](https://github.com/buildthehomelab/
 - Not the other faction's mounts, as long as `AccountWideMounts.RespectItemRestrictions` is on
   (the default). A mount only goes to characters that could use the item it's learned from, so
   your Horde characters don't get the Alliance rams.
+- Not before a character can use it. With `AccountWideMounts.RespectItemRequirements` on (the
+  default), a mount waits until the character has the level and riding skill its item asks for,
+  and is taught on the level-up or when it learns riding.
+- With mod-individual-progression and `AccountWideMounts.IndividualProgression.Enable = 1`, not
+  before the character reaches the progression state from which a vendor sells the mount's item
+  (a vendor condition on IP's quest 66000 + state). Mounts from drops and quests aren't gated.
 
 Mounts are never taken away. A character that already knows a mount keeps it whatever the
 settings say.
@@ -64,6 +70,10 @@ is kept. Either remove mod-accountwide, or keep it for the other features and se
 |---------|---------|--------------|
 | `AccountWideMounts.Enable` | `1` | Master switch. |
 | `AccountWideMounts.RespectItemRestrictions` | `1` | Only teach a mount to characters that could use the item it's learned from. `0` shares every mount with every character. |
+| `AccountWideMounts.RespectItemRequirements` | `1` | Only teach a mount once the character has the level and skill (riding) its item asks for. |
+| `AccountWideMounts.IndividualProgression.Enable` | `0` | Hold back vendor mounts until the character reaches the progression state the vendor sells them from. |
+| `AccountWideMounts.IndividualProgression.QuestBase` | `66000` | IP's state quests are QuestBase + state. |
+| `AccountWideMounts.IndividualProgression.MaxState` | `18` | The highest IP state. |
 
 ## How it works
 
@@ -71,6 +81,8 @@ is kept. Either remove mod-accountwide, or keep it for the other features and se
   account mount it doesn't know yet and is allowed to have.
 - **Learning a mount:** it's added to the account right away, so a character that logs in
   meanwhile gets it too.
+- **Level-up, learning riding, a new progression state:** the character is taught the account
+  mounts it couldn't have before.
 - **Logout:** saves once more.
 - **Deleting the account's last character:** the account's mount list is cleared.
 

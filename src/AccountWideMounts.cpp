@@ -9,20 +9,26 @@
  * Released under the GNU AGPL v3, like mod-accountwide.
  */
 
+#include "ConditionMgr.h"
 #include "Config.h"
 #include "DBCStores.h"
 #include "DatabaseEnv.h"
 #include "Log.h"
 #include "ObjectMgr.h"
 #include "Player.h"
+#include "QuestDef.h"
 #include "ScriptMgr.h"
 #include "SpellInfo.h"
 #include "SpellMgr.h"
 #include "WorldSession.h"
 
+#include <algorithm>
+#include <map>
 #include <type_traits>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
+#include <vector>
 
 namespace
 {
@@ -30,6 +36,10 @@ namespace
     {
         bool enabled = true;
         bool respectItemRestrictions = true;
+        bool respectItemRequirements = true;
+        bool ipEnabled = false;
+        uint32 ipQuestBase = 66000;
+        uint32 ipMaxState = 18;
     };
 
     Config config;
@@ -40,11 +50,18 @@ namespace
     constexpr int32 SPELL_LEARNING_COMPANION = 55884;
 
     // Races and classes allowed to use the items that teach each mount, OR-ed together when more
-    // than one item teaches the same mount. Mounts no item teaches aren't in here.
+    // than one item teaches the same mount, and the least any of those items asks for: level,
+    // riding (or other) skill, and mod-individual-progression state of the vendors selling it.
+    // Mounts no item teaches aren't in here.
     struct ItemRestriction
     {
         uint32 raceMask = 0;
         uint32 classMask = 0;
+        uint32 requiredLevel = 0;
+        uint32 requiredSkill = 0;
+        uint32 requiredSkillRank = 0;
+        uint32 requiredIpState = 0;
+        bool first = true;
     };
 
     std::unordered_map<uint32, ItemRestriction> itemRestrictions;
@@ -97,6 +114,31 @@ namespace
         return false;
     }
 
+    // mod-individual-progression keeps a character's state as rewarded quests: questBase + state.
+    uint32 IpState(Player* player)
+    {
+        for (uint32 state = config.ipMaxState; state > 0; --state)
+            if (player->GetQuestRewardStatus(config.ipQuestBase + state))
+                return state;
+
+        return 0;
+    }
+
+    bool IsIpStateQuest(uint32 questId)
+    {
+        return questId > config.ipQuestBase && questId <= config.ipQuestBase + config.ipMaxState;
+    }
+
+    bool IsRidingSpell(uint32 spellId)
+    {
+        SkillLineAbilityMapBounds bounds = sSpellMgr->GetSkillLineAbilityMapBounds(spellId);
+        for (auto itr = bounds.first; itr != bounds.second; ++itr)
+            if (itr->second->SkillLine == SKILL_RIDING)
+                return true;
+
+        return false;
+    }
+
     // Whether a mount learned on another character may be taught to this one.
     bool CanShareWith(Player* player, uint32 spellId)
     {
@@ -139,12 +181,87 @@ namespace
             }
         }
 
+        // What the item itself asks of whoever learns from it: the shop and vendor mounts need
+        // riding, and an item a vendor only sells from a progression phase on waits for the
+        // character to get there.
+        auto itr = itemRestrictions.find(spellId);
+        if (itr != itemRestrictions.end())
+        {
+            ItemRestriction const& restriction = itr->second;
+            if (config.respectItemRequirements)
+            {
+                if (player->GetLevel() < restriction.requiredLevel)
+                    return false;
+
+                if (restriction.requiredSkill && player->GetSkillValue(restriction.requiredSkill) < restriction.requiredSkillRank)
+                    return false;
+            }
+
+            if (config.ipEnabled && IpState(player) < restriction.requiredIpState)
+                return false;
+        }
+
         return true;
+    }
+
+    // The lowest progression state any vendor sells each item from: a vendor whose conditions
+    // ask for IP's quest questBase + n sells it from state n, any other vendor from state 0.
+    // Items no vendor sells (drops, quest rewards) aren't in here and get no state gate.
+    std::unordered_map<uint32, uint32> LoadVendorIpStates(std::unordered_set<uint32> const& items)
+    {
+        std::unordered_map<uint32, uint32> states;
+        if (items.empty())
+            return states;
+
+        // (vendor, item) -> state its conditions ask for
+        std::map<std::pair<uint32, uint32>, uint32> conditioned;
+        if (QueryResult result = WorldDatabase.Query(
+            "SELECT `SourceGroup`, `SourceEntry`, MAX(`ConditionValue1`) FROM `conditions` "
+            "WHERE `SourceTypeOrReferenceId` = {} AND `ConditionTypeOrReference` = {} AND `NegativeCondition` = 0 "
+            "AND `ConditionValue1` > {} AND `ConditionValue1` <= {} GROUP BY `SourceGroup`, `SourceEntry`, `ElseGroup`",
+            uint32(CONDITION_SOURCE_TYPE_NPC_VENDOR), uint32(CONDITION_QUESTREWARDED), config.ipQuestBase,
+            config.ipQuestBase + config.ipMaxState))
+        {
+            do
+            {
+                Field* fields = result->Fetch();
+                auto key = std::make_pair(fields[0].Get<uint32>(), uint32(fields[1].Get<int32>()));
+                uint32 state = fields[2].Get<uint32>() - config.ipQuestBase;
+                // Else groups are alternatives: the easiest one counts.
+                auto [itr, inserted] = conditioned.try_emplace(key, state);
+                if (!inserted)
+                    itr->second = std::min(itr->second, state);
+            } while (result->NextRow());
+        }
+
+        if (QueryResult result = WorldDatabase.Query("SELECT `entry`, `item` FROM `npc_vendor` WHERE `item` > 0"))
+        {
+            do
+            {
+                Field* fields = result->Fetch();
+                uint32 vendor = fields[0].Get<uint32>();
+                uint32 item = uint32(fields[1].Get<int32>());
+                if (!items.contains(item))
+                    continue;
+
+                auto conditionItr = conditioned.find({ vendor, item });
+                uint32 state = conditionItr != conditioned.end() ? conditionItr->second : 0;
+                auto [itr, inserted] = states.try_emplace(item, state);
+                if (!inserted)
+                    itr->second = std::min(itr->second, state);
+            } while (result->NextRow());
+        }
+
+        return states;
     }
 
     void BuildItemRestrictions()
     {
         itemRestrictions.clear();
+
+        // mount spell -> items that teach it
+        std::unordered_map<uint32, std::vector<ItemTemplate const*>> teachers;
+        std::unordered_set<uint32> teacherItems;
 
         for (auto const& [entry, proto] : *sObjectMgr->GetItemTemplateStore())
         {
@@ -157,9 +274,37 @@ namespace
             if (taughtSpell <= 0 || !IsMountSpell(taughtSpell))
                 continue;
 
-            ItemRestriction& restriction = itemRestrictions[taughtSpell];
-            restriction.raceMask |= proto.AllowableRace;
-            restriction.classMask |= proto.AllowableClass;
+            teachers[taughtSpell].push_back(&proto);
+            teacherItems.insert(entry);
+        }
+
+        std::unordered_map<uint32, uint32> const vendorIpStates = config.ipEnabled ? LoadVendorIpStates(teacherItems)
+            : std::unordered_map<uint32, uint32>();
+
+        for (auto const& [spellId, items] : teachers)
+        {
+            ItemRestriction& restriction = itemRestrictions[spellId];
+            for (ItemTemplate const* proto : items)
+            {
+                restriction.raceMask |= proto->AllowableRace;
+                restriction.classMask |= proto->AllowableClass;
+
+                auto stateItr = vendorIpStates.find(proto->ItemId);
+                uint32 ipState = stateItr != vendorIpStates.end() ? stateItr->second : 0;
+
+                // Any one item is enough to learn the mount, so the easiest one counts.
+                bool easier = restriction.first || proto->RequiredSkillRank < restriction.requiredSkillRank ||
+                    (proto->RequiredSkillRank == restriction.requiredSkillRank && proto->RequiredLevel < restriction.requiredLevel);
+                if (easier)
+                {
+                    restriction.requiredLevel = proto->RequiredLevel;
+                    restriction.requiredSkill = proto->RequiredSkillRank ? proto->RequiredSkill : 0;
+                    restriction.requiredSkillRank = proto->RequiredSkillRank;
+                }
+
+                restriction.requiredIpState = restriction.first ? ipState : std::min(restriction.requiredIpState, ipState);
+                restriction.first = false;
+            }
         }
 
         LOG_INFO("module", "mod-accountwide-mounts: {} mounts are taught by items", itemRestrictions.size());
@@ -222,6 +367,10 @@ public:
     {
         config.enabled = sConfigMgr->GetOption<bool>("AccountWideMounts.Enable", true);
         config.respectItemRestrictions = sConfigMgr->GetOption<bool>("AccountWideMounts.RespectItemRestrictions", true);
+        config.respectItemRequirements = sConfigMgr->GetOption<bool>("AccountWideMounts.RespectItemRequirements", true);
+        config.ipEnabled = sConfigMgr->GetOption<bool>("AccountWideMounts.IndividualProgression.Enable", false);
+        config.ipQuestBase = sConfigMgr->GetOption<uint32>("AccountWideMounts.IndividualProgression.QuestBase", 66000);
+        config.ipMaxState = sConfigMgr->GetOption<uint32>("AccountWideMounts.IndividualProgression.MaxState", 18);
     }
 
     // Items are loaded by now.
@@ -256,12 +405,34 @@ public:
     }
 
     // Covers mounts learned mid-session, so another character logging in meanwhile gets them too.
+    // Learning riding can open up mounts this character was held back from.
     void OnPlayerLearnSpell(Player* player, uint32 spellId) override
     {
-        if (!config.enabled || !IsRealPlayer(player) || !IsMountSpell(spellId))
+        if (!config.enabled || !IsRealPlayer(player))
             return;
 
-        SaveMount(player->GetSession()->GetAccountId(), spellId);
+        if (IsMountSpell(spellId))
+            SaveMount(player->GetSession()->GetAccountId(), spellId);
+        else if (config.respectItemRequirements && IsRidingSpell(spellId))
+            TeachMounts(player);
+    }
+
+    // Mounts held back for level...
+    void OnPlayerLevelChanged(Player* player, uint8 /*oldLevel*/) override
+    {
+        if (!config.enabled || !config.respectItemRequirements || !IsRealPlayer(player))
+            return;
+
+        TeachMounts(player);
+    }
+
+    // ...or for progression: IP raises the state by rewarding its quest.
+    void OnPlayerCompleteQuest(Player* player, Quest const* quest) override
+    {
+        if (!config.enabled || !config.ipEnabled || !quest || !IsRealPlayer(player) || !IsIpStateQuest(quest->GetQuestId()))
+            return;
+
+        TeachMounts(player);
     }
 
     // Deleting the last character on an account forgets the account's mounts too.
