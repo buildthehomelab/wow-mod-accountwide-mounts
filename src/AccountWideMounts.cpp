@@ -15,6 +15,9 @@
 #include "Log.h"
 #include "ObjectMgr.h"
 #include "Player.h"
+#if __has_include("ChallengesApi.h")
+#include "ChallengesApi.h"
+#endif
 #include "ScriptMgr.h"
 #include "SpellInfo.h"
 #include "SpellMgr.h"
@@ -197,6 +200,12 @@ namespace
 
     void TeachMounts(Player* player)
     {
+#if __has_include("ChallengesApi.h")
+        // mod-challenges: a Self-Found character gets only the mounts it finds or buys itself.
+        if (Challenges::IsSelfFound(player->GetGUID().GetCounter()))
+            return;
+#endif
+
         QueryResult result = CharacterDatabase.Query(
             "SELECT `spell` FROM `accountwide_mounts` WHERE `account_id` = {}",
             player->GetSession()->GetAccountId());
